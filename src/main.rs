@@ -1,24 +1,19 @@
-use axum::{
-    Json, Router,
-    routing::{get, post},
-};
+mod routes {
+    pub mod main_routes;
+}
+pub mod controllers {
+    pub mod message;
+}
 
 #[tokio::main]
 async fn main() {
-    // build our application with a single route
-    let app = Router::new()
-        .route("/", get(|| async { "Hello, World!" }))
-        .route("/hello", get(|| async { "Hello, Axum!" }))
-        .route(
-            "/test",
-            post(|Json(event): Json<serde_json::Value>| async move {
-                println!("Received event: {:?}", event);
-                println!("{:?}", event["helloo"].to_string());
-                "Event received"
-            }),
-        );
+    const PORT: u16 = 3005;
+    let address: String = format!("0.0.0.0:{}", PORT);
+    let app = routes::main_routes::get_routes();
 
-    // run our app with hyper, listening globally on port 3000
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3005").await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&address).await.unwrap();
+
+    println!("Listening on {}", &address);
+
     axum::serve(listener, app).await.unwrap();
 }
