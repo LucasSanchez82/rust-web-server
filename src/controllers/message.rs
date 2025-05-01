@@ -1,9 +1,11 @@
 use axum::{
     Json,
-    extract::ws::{WebSocket, WebSocketUpgrade},
+    extract::ws::{Message, WebSocket, WebSocketUpgrade},
     response::Response,
     routing::{MethodRouter, post},
 };
+use futures_util::sink::SinkExt;
+use futures_util::stream::{SplitSink, SplitStream, StreamExt}; // Explicitly import SinkExt
 
 pub fn handle_post_message() -> MethodRouter {
     post(|Json(event): Json<serde_json::Value>| async move {
@@ -13,27 +15,31 @@ pub fn handle_post_message() -> MethodRouter {
     })
 }
 
-pub async fn handle_socket(mut socket: WebSocket) {
-    while let Some(msg) = socket.recv().await {
-        let msg = if let Ok(msg) = msg {
-            println!("WS : Received message: {:?}", msg);
-            msg
-        } else {
-            // client disconnected
-            println!("WS : Client disconnected");
-            return;
-        };
+pub async fn handle_socket(socket: WebSocket) {
+    let (sender, receiver) = socket.split();
 
-        if socket.send(msg.clone()).await.is_ok() {
-            println!("WS : Sent message: {:?}", msg);
-        } else {
-            // client disconnected
-            println!("WS : Client disconnected");
-            return;
-        }
-    }
+    tokio::spawn(write(sender));
+    tokio::spawn(read(receiver));
 }
 
 pub async fn handler(ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(handle_socket)
+}
+
+async fn read(mut receiver: SplitStream<WebSocket>) {
+    while let Some(Ok(message)) = receiver.next().await {
+        match message {
+            Message::Text(text) => println!("Received text: {}", text),
+            Message::Binary(_) => println!("Received binary data"),
+            _ => (),
+        }
+    }
+    println!("receiver: {:#?}", receiver);
+}
+
+async fn write(mut sender: SplitSink<WebSocket, Message>) {
+    if let Err(e) = sender.send(Message::Text("Hello from server".into())).await {
+        println!("Failed to send message: {}", e);
+    }
+    println!("sender: {:#?}", sender);
 }
