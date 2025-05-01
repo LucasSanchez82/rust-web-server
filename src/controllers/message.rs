@@ -18,28 +18,36 @@ pub fn handle_post_message() -> MethodRouter {
 pub async fn handle_socket(socket: WebSocket) {
     let (sender, receiver) = socket.split();
 
-    tokio::spawn(write(sender));
-    tokio::spawn(read(receiver));
+    // Pass both sender and receiver to the read function
+    tokio::spawn(handle_ws_message(receiver, sender));
 }
 
 pub async fn handler(ws: WebSocketUpgrade) -> Response {
     ws.on_upgrade(handle_socket)
 }
 
-async fn read(mut receiver: SplitStream<WebSocket>) {
+async fn handle_ws_message(
+    mut receiver: SplitStream<WebSocket>,
+    mut sender: SplitSink<WebSocket, Message>,
+) {
     while let Some(Ok(message)) = receiver.next().await {
         match message {
-            Message::Text(text) => println!("Received text: {}", text),
-            Message::Binary(_) => println!("Received binary data"),
+            Message::Text(text) => {
+                println!("Received text: {}", text);
+
+                // Send a response back to the client
+                if let Err(e) = sender
+                    .send(Message::Text(format!("Server received: {}", text).into()))
+                    .await
+                {
+                    println!("Failed to send response: {}", e);
+                }
+            }
+            Message::Binary(_) => {
+                println!("Received binary data");
+            }
             _ => (),
         }
     }
     println!("receiver: {:#?}", receiver);
-}
-
-async fn write(mut sender: SplitSink<WebSocket, Message>) {
-    if let Err(e) = sender.send(Message::Text("Hello from server".into())).await {
-        println!("Failed to send message: {}", e);
-    }
-    println!("sender: {:#?}", sender);
 }
